@@ -124,12 +124,18 @@ public class DatabricksDataAccessService : IDatabricksDataAccessService
             "application/json"
         );
 
+        var authHeader = await GetAuthorizationHeaderAsync(cancellationToken);
+
         var response = await ExecuteWithRetryAsync(
-            () => _httpClient.PostAsync(
-                $"{_config.WorkspaceUrl}{StatementExecutionApiPath}",
-                content,
-                cancellationToken
-            ),
+            async () =>
+            {
+                var req = new HttpRequestMessage(HttpMethod.Post, $"{_config.WorkspaceUrl}{StatementExecutionApiPath}")
+                {
+                    Content = content
+                };
+                req.Headers.Authorization = System.Net.Http.Headers.AuthenticationHeaderValue.Parse(authHeader);
+                return await _httpClient.SendAsync(req, cancellationToken);
+            },
             "Execute query",
             cancellationToken
         );
@@ -261,11 +267,15 @@ public class DatabricksDataAccessService : IDatabricksDataAccessService
         string statementId,
         CancellationToken cancellationToken)
     {
+        var authHeader = await GetAuthorizationHeaderAsync(cancellationToken);
+
         var response = await ExecuteWithRetryAsync(
-            () => _httpClient.GetAsync(
-                $"{_config.WorkspaceUrl}{string.Format(StatementGetApiPath, statementId)}",
-                cancellationToken
-            ),
+            async () =>
+            {
+                var req = new HttpRequestMessage(HttpMethod.Get, $"{_config.WorkspaceUrl}{string.Format(StatementGetApiPath, statementId)}");
+                req.Headers.Authorization = System.Net.Http.Headers.AuthenticationHeaderValue.Parse(authHeader);
+                return await _httpClient.SendAsync(req, cancellationToken);
+            },
             "Poll statement result",
             cancellationToken
         );
