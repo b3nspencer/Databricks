@@ -1,0 +1,159 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: databricks-service
+  namespace: default
+  labels:
+    app: databricks-service
+    version: v1.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: databricks-service
+  template:
+    metadata:
+      labels:
+        app: databricks-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Use managed identity for authentication (requires pod identity binding)
+      serviceAccountName: databricks-service
+
+      containers:
+      - name: databricks-service
+        image: myregistry.azurecr.io/databricks-service:latest
+        imagePullPolicy: Always
+
+        # Environment variables for configuration
+        env:
+        # Databricks configuration
+        - name: DATABRICKS_WORKSPACE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: databricks-config
+              key: workspace-url
+
+        - name: DATABRICKS_WAREHOUSE_ID
+          valueFrom:
+            configMapKeyRef:
+              name: databricks-config
+              key: warehouse-id
+
+        - name: DATABRICKS_USE_MANAGED_IDENTITY
+          value: "true"
+
+        # Optional: Key Vault configuration
+        - name: DATABRICKS_KEYVAULT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: databricks-config
+              key: keyvault-url
+              optional: true
+
+        - name: DATABRICKS_TOKEN_SECRET_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: databricks-config
+              key: token-secret-name
+              optional: true
+
+        # Query execution settings
+        - name: DATABRICKS_TIMEOUT_SECONDS
+          value: "600"
+
+        - name: DATABRICKS_WAIT_TIMEOUT_SECONDS
+          value: "10"
+
+        # Logging
+        - name: Logging__LogLevel__Default
+          value: Information
+
+        # Pod identity for managed identity
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+        # Resource limits
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+
+        # Volume mounts
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/cache
+
+      # Pod security context
+      securityContext:
+        fsGroup: 1000
+
+      # Volumes
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+
+      # Node affinity (prefer nodes with specific labels)
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: workload-type
+                operator: In
+                values:
+                - compute-intensive
+
+      # Tolerations for taints
+      tolerations:
+      - key: workload-type
+        operator: Equal
+        value: compute-intensive
+        effect: NoSchedule
+
+      # Termination grace period
+      terminationGracePeriodSeconds: 30

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: databricks-config
+  namespace: default
+data:
+  # Databricks workspace URL (without trailing slash)
+  workspace-url: "https://adb-your-workspace-id.azuredatabricks.net"
+
+  # Databricks SQL warehouse ID
+  warehouse-id: "your-warehouse-id"
+
+  # Optional: Azure Key Vault URL for storing PAT token
+  keyvault-url: "https://your-keyvault.vault.azure.net/"
+
+  # Optional: Key Vault secret name for the PAT token
+  token-secret-name: "databricks-pat"
+
+  # Application settings
+  query-timeout-seconds: "600"
+  wait-timeout-seconds: "10"
+  max-row-limit: "0"  # 0 means unlimited
