@@ -1,4 +1,5 @@
 using DatabricksService.Caching;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DatabricksService;
@@ -58,6 +59,7 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Adds Databricks services with environment variable configuration
     /// </summary>
+    [Obsolete("Use AddDatabricksServicesFromConfiguration instead, which supports multiple config sources")]
     public static IServiceCollection AddDatabricksServicesFromEnvironment(
         this IServiceCollection services)
     {
@@ -93,6 +95,66 @@ public static class ServiceCollectionExtensions
             {
                 throw new InvalidOperationException(
                     "DATABRICKS_WAREHOUSE_ID environment variable is required");
+            }
+
+            config.WorkspaceUrl = workspaceUrl;
+            config.WarehouseId = warehouseId;
+            config.UseManagedIdentity = useManagedIdentity;
+            config.KeyVaultUrl = keyVaultUrl;
+            config.TokenSecretName = tokenSecretName;
+            config.PersonalAccessToken = personalAccessToken;
+            config.TimeoutSeconds = timeoutSeconds;
+            config.WaitTimeoutSeconds = waitTimeoutSeconds;
+        });
+    }
+
+    /// <summary>
+    /// Adds Databricks services with configuration from multiple sources
+    /// Supports User Secrets, environment variables, and appsettings.json
+    /// </summary>
+    public static IServiceCollection AddDatabricksServicesFromConfiguration(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        if (services == null)
+        {
+            throw new ArgumentNullException(nameof(services));
+        }
+
+        if (configuration == null)
+        {
+            throw new ArgumentNullException(nameof(configuration));
+        }
+
+        return services.AddDatabricksServices(config =>
+        {
+            var databricksConfig = configuration.GetSection("Databricks");
+
+            var workspaceUrl = databricksConfig["WorkspaceUrl"];
+            var warehouseId = databricksConfig["WarehouseId"];
+            var useManagedIdentity = bool.TryParse(
+                databricksConfig["UseManagedIdentity"],
+                out var result) ? result : true;
+            var keyVaultUrl = databricksConfig["KeyVaultUrl"];
+            var tokenSecretName = databricksConfig["TokenSecretName"] ?? "databricks-pat";
+            var personalAccessToken = databricksConfig["PersonalAccessToken"];
+            var timeoutSeconds = int.TryParse(
+                databricksConfig["TimeoutSeconds"],
+                out var timeout) ? timeout : 600;
+            var waitTimeoutSeconds = int.TryParse(
+                databricksConfig["WaitTimeoutSeconds"],
+                out var waitTimeout) ? waitTimeout : 10;
+
+            if (string.IsNullOrWhiteSpace(workspaceUrl))
+            {
+                throw new InvalidOperationException(
+                    "Databricks:WorkspaceUrl is required. Set via User Secrets, environment variable (Databricks__WorkspaceUrl), or appsettings.json");
+            }
+
+            if (string.IsNullOrWhiteSpace(warehouseId))
+            {
+                throw new InvalidOperationException(
+                    "Databricks:WarehouseId is required. Set via User Secrets, environment variable (Databricks__WarehouseId), or appsettings.json");
             }
 
             config.WorkspaceUrl = workspaceUrl;

@@ -1,9 +1,23 @@
 ﻿using DatabricksService;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
+// Build configuration from multiple sources (in order of precedence):
+// 1. User Secrets (dotnet user-secrets set "key" "value")
+// 2. Environment variables
+// 3. appsettings.json
+var config = new ConfigurationBuilder()
+    .AddJsonFile("appsettings.json", optional: true)
+    .AddEnvironmentVariables()
+    .AddUserSecrets<Program>(optional: true)
+    .Build();
+
 // Build dependency injection container
 var services = new ServiceCollection();
+
+// Add configuration to DI container
+services.AddSingleton<IConfiguration>(config);
 
 // Add logging
 services.AddLogging(builder =>
@@ -12,27 +26,32 @@ services.AddLogging(builder =>
     builder.SetMinimumLevel(LogLevel.Information);
 });
 
-// Add Databricks services from environment variables
-// Required environment variables:
-// - DATABRICKS_WORKSPACE_URL: https://adb-xxx.azuredatabricks.net
-// - DATABRICKS_WAREHOUSE_ID: your-warehouse-id
-// Optional environment variables:
-// - DATABRICKS_USE_MANAGED_IDENTITY: true (default) or false
-// - DATABRICKS_KEYVAULT_URL: https://your-keyvault.vault.azure.net/
-// - DATABRICKS_TOKEN_SECRET_NAME: databricks-pat (default)
-// - DATABRICKS_PERSONAL_ACCESS_TOKEN: your-pat-token
-// - DATABRICKS_TIMEOUT_SECONDS: 600 (default)
-// - DATABRICKS_WAIT_TIMEOUT_SECONDS: 10 (default)
+// Add Databricks services from configuration
+// Supports configuration from multiple sources (in order of precedence):
+// 1. User Secrets: dotnet user-secrets set "Databricks:WorkspaceUrl" "https://..."
+// 2. Environment variables: DATABRICKS_WORKSPACE_URL or Databricks__WorkspaceUrl
+// 3. appsettings.json: { "Databricks": { "WorkspaceUrl": "..." } }
+// Required:
+// - Databricks:WorkspaceUrl: https://adb-xxx.azuredatabricks.net
+// - Databricks:WarehouseId: your-warehouse-id
+// Optional:
+// - Databricks:UseManagedIdentity: true (default)
+// - Databricks:KeyVaultUrl
+// - Databricks:TokenSecretName: databricks-pat (default)
+// - Databricks:PersonalAccessToken
+// - Databricks:TimeoutSeconds: 600 (default)
+// - Databricks:WaitTimeoutSeconds: 10 (default)
 try
 {
-    services.AddDatabricksServicesFromEnvironment();
+    services.AddDatabricksServicesFromConfiguration(config);
 }
 catch (Exception ex)
 {
     Console.Error.WriteLine($"Configuration error: {ex.Message}");
-    Console.Error.WriteLine("Please set required environment variables:");
-    Console.Error.WriteLine("  DATABRICKS_WORKSPACE_URL");
-    Console.Error.WriteLine("  DATABRICKS_WAREHOUSE_ID");
+    Console.Error.WriteLine("Please configure Databricks settings via:");
+    Console.Error.WriteLine("  1. User Secrets: dotnet user-secrets set \"Databricks:WorkspaceUrl\" \"https://...\"");
+    Console.Error.WriteLine("  2. Environment variables: DATABRICKS_WORKSPACE_URL");
+    Console.Error.WriteLine("  3. appsettings.json");
     Environment.Exit(1);
 }
 
